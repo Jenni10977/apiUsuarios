@@ -73,7 +73,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
     
     user.is_active = False  # Marcamos al usuario como inactivo
     db.commit()  # Guardamos los cambios en la base de datos
-    return {"message": "User deleted"}  # Confirmamos la eliminación lógica
+    return {"message": "Usuario Eliminado"}  # Confirmamos la eliminación lógica
 
 
 # Endpoint para listar los usuarios activos
