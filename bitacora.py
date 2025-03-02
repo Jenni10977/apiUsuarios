@@ -1,52 +1,40 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
+from motor.motor_asyncio import AsyncIOMotorClient
+from bson import ObjectId
+import datetime
 
-# Configuración de la base de datos SQLite
-DATABASE_URL = "sqlite:///./bitacora.db"
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+# Conectar con MongoDB
+MONGO_URL = "mongodb://localhost:27017"  # Cambia esto si usas MongoDB Atlas
+DATABASE_NAME = "bitacora_db"
+COLLECTION_NAME = "log_access"
 
-# Inicializar la aplicación FastAPI
+client = AsyncIOMotorClient(MONGO_URL)
+db = client[DATABASE_NAME]
+collection = db[COLLECTION_NAME]
+
+# Inicializar FastAPI
 app = FastAPI()
 
-# Modelo para la tabla "log_access"
-class LogAccess(Base):
-    __tablename__ = "log_access"
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    image_url = Column(String, nullable=False)  # URL de la imagen (cadena de texto)
-    date = Column(String, nullable=False)  # Fecha en formato de cadena
-
-# Crear las tablas en la base de datos si no existen
-Base.metadata.create_all(bind=engine)
-
-# Función para obtener la sesión de la base de datos
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-# Modelo para registrar acceso en la bitácora
+# Modelo de datos para la bitácora
 class LogAccessCreate(BaseModel):
     image_url: str  # URL de la imagen
-    date: str  # Fecha en formato de cadena
+    date: str  # Fecha en formato de cadena (YYYY-MM-DD HH:MM:SS)
 
-# Endpoint para registrar un intento de acceso en la bitácora
+# ✅ Endpoint para registrar un intento de acceso en la bitácora
 @app.post("/log/")
-def create_log_entry(log_data: LogAccessCreate, db: Session = Depends(get_db)):
-    log_entry = LogAccess(image_url=log_data.image_url, date=log_data.date)
-    db.add(log_entry)
-    db.commit()
-    db.refresh(log_entry)
-    return log_entry
+async def create_log_entry(log_data: LogAccessCreate):
+    log_entry = {
+        "image_url": log_data.image_url,
+        "date": log_data.date
+    }
+    result = await collection.insert_one(log_entry)
+    return {"id": str(result.inserted_id), **log_entry}
 
-# Endpoint para obtener todos los registros de la bitácora
+# ✅ Endpoint para obtener todos los registros de la bitácora
 @app.get("/log/")
-def get_log_entries(db: Session = Depends(get_db)):
-    logs = db.query(LogAccess).all()
+async def get_log_entries():
+    logs = await collection.find().to_list(None)
+    for log in logs:
+        log["_id"] = str(log["_id"])  # Convertir ObjectId a string
     return logs
